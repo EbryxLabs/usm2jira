@@ -90,9 +90,47 @@ def get_usm_alarms(api_url, token):
     return None
 
 
+def get_jira_issues(config):
+
+    jira = config['jira']
+    url = urljoin(jira.get('api_url'), 'search')
+    logger.info('Making POST request: %s', url)
+
+    if not(jira.get('project_identifier') and jira.get('interval')):
+        logger.info('JIRA project and/or interval for issues are '
+                    'missing in config. Only the latest 100 issues '
+                    'will be considered.')
+
+    query = dict()
+    query['maxResults'] = 100
+    query['fields'] = ['assignee', 'summary',
+                       'description', 'created', 'updated']
+    if jira.get('project_identifier') or jira.get('interval'):
+        jql = list()
+        jql.append('project = %s' % (jira['project_identifier'])
+                   if jira.get('project_identifier') else str())
+        jql.append('created > %s' % (jira['interval'])
+                   if jira.get('interval') else str())
+
+        jql = ' AND '.join([x for x in jql if x])
+        query['jql'] = jql
+
+    logger.info('Using query: %s', query)
+    res = requests.post(url, json=query, auth=(
+        jira.get('username'), jira.get('api_token')))
+
+    if res.status_code < 300:
+        return res.json().get('issues', list())
+
+    logger.info('Unexpected response returned: %s', res)
+    return list()
+
+
 if __name__ == "__main__":
 
     config = read_config()
     api_url, token = get_auth_token(config)
     alarms = get_usm_alarms(api_url, token)
     print(json.dumps(alarms, indent=2))
+    issues = get_jira_issues(config)
+    print(json.dumps(issues, indent=2))
