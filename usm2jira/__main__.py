@@ -1,10 +1,12 @@
 import os
+import time
 import json
 import time
 import logging
+import hashlib
 import requests
+import ipaddress as ipaddr
 from urllib.parse import urljoin
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -63,7 +65,7 @@ def get_auth_token(config):
 
     usm = config['usm']
     url = urljoin(usm.get('api_url'), 'oauth/token')
-    logger.info('Retreving OAUTH token for USM...')
+    logger.info('Retrieving OAUTH token for USM...')
     res = requests.post(url, data={'grant_type': 'client_credentials'},
                         auth=(usm.get('client_id'), usm.get('client_secret')))
 
@@ -88,6 +90,11 @@ def get_usm_alarms(config, token):
     res = requests.get(url, headers={'Authorization': 'Bearer ' + token})
     if res.status_code < 300:
         alarms = res.json().get('_embedded', dict()).get('alarms', list())
+        if not alarms:
+            logger.info('USM has no alarms in given interval. '
+                        'Exiting program.')
+            exit(0)
+
         logger.info('[%d] alarms fetched from USM.', len(alarms))
         logger.info(str())
         return alarms
@@ -117,6 +124,11 @@ def get_jira_projects(config):
                 key: value for (key, value) in value.items()
                 if key in query['fields']
             })
+
+        if not projects:
+            logger.info('JIRA has no projects. Exiting program.')
+            exit(1)
+
         logger.info('[%d] projects fetched from JIRA.', len(projects))
         logger.info(str())
         return projects
@@ -136,15 +148,20 @@ def get_jira_issue_types(config):
     res = requests.get(url, auth=(jira.get('username'), jira.get('api_token')))
 
     if res.status_code < 300:
-        projects = list()
+        issuetypes = list()
         for value in res.json():
-            projects.append({
+            issuetypes.append({
                 key: value for (key, value) in value.items()
                 if key in query['fields']
             })
-        logger.info('[%d] issue types fetched from JIRA.', len(projects))
+
+        if not issuetypes:
+            logger.info('JIRA has no issue types. Exiting program.')
+            exit(1)
+
+        logger.info('[%d] issue types fetched from JIRA.', len(issuetypes))
         logger.info(str())
-        return projects
+        return issuetypes
 
     logger.info('Unexpected response returned: %s', res)
     return None
@@ -187,7 +204,7 @@ def get_jira_issues(config):
         for issue in issues:
             url = urljoin(
                 jira.get('api_url'),
-                'issue/%s/properties/usm_data' % issue.get('id'))
+                'issue/%s/properties/_data' % issue.get('id'))
 
             res = requests.get(url, auth=(
                 jira.get('username'), jira.get('api_token')))
@@ -197,7 +214,7 @@ def get_jira_issues(config):
 
         return issues
 
-    logger.info('Unexpected response returned: %s', res)
+    logger.info('Unexpected response returned: %s', res.json())
     return list()
 
 
@@ -205,54 +222,105 @@ def filter_alarms(alarms, issues, config):
 
     filtered = list()
     usm = config['usm']
-    if not(usm.get('alarms') and usm['alarms'].get('titles')):
-        logger.info('No alarm titles specified in config. '
+    if not usm.get('templates'):
+        logger.info('No alarm templates specified in config. '
                     'Skipping all alarms...')
         return filtered
 
-    titles = usm['alarms']['titles']
     posted_uuids = [x['properties']['alarm-uuid'] for x in issues if x.get(
-        'properties', dict()).get('alarm-uuid')]
-
+                    'properties', dict()).get('alarm-uuid')]
     for alarm in alarms:
-        if alarm['uuid'] not in posted_uuids and \
-                alarm.get('rule_strategy', str()) in titles:
+        if alarm['uuid'] in posted_uuids:
+            continue
+
+        is_triggered = False
+        for template in usm['templates']:
+            if not(alarm.get('rule_strategy') in template.get(
+                    'triggers', list()) or alarm.get('rule_method') in
+                    template.get('triggers', list())):
+                continue
+            is_triggered = True
+
+        if is_triggered:
             filtered.append(alarm)
 
-    logger.info('[%d] alarms remained after filtering out already '
-                'posted ones.', len(filtered))
+    if not filtered:
+        logger.info('No alarms left to push to JIRA after '
+                    'filtering. Exiting program.')
+        exit(0)
+
+    logger.info('[%d] alarms remained after filtering.', len(filtered))
     return filtered
 
 
-def tickets_from_alarms(alarms):
+def tickets_from_alarms(alarms, config):
 
     tickets = list()
     for alarm in alarms:
         ticket = dict()
-        ticket['uuid'] = alarm['uuid']
-        ticket['title'] = alarm['rule_strategy']
-        ticket['timestamp'] = alarm['timestamp_occured_iso8601']
-        ticket['method'] = alarm['rule_method']
-        ticket['priority'] = alarm['priority_label']
-        ticket['sources'] = alarm['alarm_source_names']
-        ticket['dests'] = alarm['alarm_destination_names']
-        ticket['description'] = 'Template description will come here.'
-        ticket['remediation'] = 'Template remediation will come here.'
+
+        ticket['_uuid'] = alarm['uuid']
+        ticket['_timestamp'] = alarm['timestamp_occured_iso8601']
+        ticket['_priority'] = alarm['priority_label']
+        ticket['_sources'] = alarm.get('alarm_source_names', list())
+        ticket['_dests'] = alarm.get('alarm_destination_names', list())
+
+        ticket['SensorName'] = 'Test'
+        ticket['Hostname'] = alarm.get('http_hostname')
+        ticket['MalwareFamily'] = alarm.get('malware_family')
+        ticket['AlarmTitle'] = alarm['rule_strategy']
+        ticket['SubCategory'] = alarm['rule_method']
+        ticket['Date'] = ticket['_timestamp'][2:10].replace('-', str())
+
+        ticket['PrivateIP'] = [
+            x for x in [*ticket['_sources'], *ticket['_dests']]
+            if ipaddr.ip_address(x).is_private]
+        ticket['PublicIP'] = [
+            x for x in [*ticket['_sources'], *ticket['_dests']]
+            if not ipaddr.ip_address(x).is_private]
+
+        ticket.pop('PrivateIP') if not ticket.get('PrivateIP') else str()
+        ticket.pop('PublicIP') if not ticket.get('PublicIP') else str()
+        ticket.pop('Hostname') if not ticket.get('Hostname') else str()
+        ticket.pop('MalwareFamily') if not \
+            ticket.get('MalwareFamily') else str()
+
         tickets.append(ticket)
 
+    usm = config['usm']
+    for ticket in tickets:
+        ticket_template = dict()
+        for template in usm.get('templates'):
+            if ticket['AlarmTitle'] in template.get('triggers'):
+                ticket_template = template.copy()
+                break
+
+        if not ticket_template:
+            continue
+
+        for key in ticket:
+            if key.startswith('_'):
+                continue
+            if isinstance(ticket[key], list):
+                ticket[key] = ', '.join(ticket[key])
+
+            if ticket_template.get('title'):
+                ticket_template['title'] = ticket_template['title'] \
+                    .replace('$%s' % (key), ticket[key])
+
+            if not ticket_template.get('description'):
+                continue
+
+            description = list()
+            for desc in ticket_template['description']:
+                description.append(desc.replace('$%s' % (key), ticket[key]))
+            ticket_template['description'] = description
+
+        ticket['template'] = ticket_template
     return tickets
 
 
 def push_tickets(tickets, projects, issue_types, config):
-
-    data = {
-        'fields': {
-            'summary': '{title}',
-            'project': {'id': '{project_id}'},
-            'issuetype': {'id': '{issuetype_id}'},
-            'description': '*{description}*\n-Baka-'
-        }
-    }
 
     project_id = 0
     jira = config['jira']
@@ -269,7 +337,6 @@ def push_tickets(tickets, projects, issue_types, config):
         return
 
     issuetype_id = 0
-
     for itype in issue_types:
         if not(itype.get('name') and itype.get('id')):
             continue
@@ -281,33 +348,59 @@ def push_tickets(tickets, projects, issue_types, config):
         logger.info('Could not detect issue type id for pushing tickets with.')
         return
 
-    logger.info('Pusing tickets to JIRA...')
-    url = urljoin(jira.get('api_url'), 'issue')
+    data = {
+        'fields': {
+            'summary': '{title}',
+            'project': {'id': '{project_id}'},
+            'issuetype': {'id': '{issuetype_id}'},
+            'description': '{description}'
+        }
+    }
+    logger.info('Pushing tickets to JIRA...')
     responses = dict()
     count = 0
     for ticket in tickets:
+
+        url = urljoin(jira.get('api_url'), 'issue')
         ticket_data = json.dumps(data)
         ticket_data = ticket_data \
-            .replace('{title}', ticket.get('title')) \
-            .replace('{description}', ticket.get('description')) \
+            .replace('{title}', ticket['template']['title']) \
+            .replace('{description}', '\\n\\n'.join(
+                ticket['template']['description'])) \
             .replace('{project_id}', project_id) \
             .replace('{issuetype_id}', issuetype_id) \
 
         ticket_data = json.loads(ticket_data)
         res = requests.post(url, json=ticket_data, auth=(
             jira.get('username'), jira.get('api_token')))
-        responses[ticket['uuid']] = res.json()
 
-        if res.status_code < 300:
-            count += 1
-            res = res.json()
-            url = urljoin(
-                jira.get('api_url'),
-                'issue/%s/properties/usm_data' % (res.get('id')))
+        if res.status_code >= 300:
+            responses[ticket['_uuid']] = {
+                'ticket': ticket['AlarmTitle'],
+                'response': {
+                    'code': res.status_code,
+                    'content': res.content.decode('utf8')
+                }
+            }
+            continue
 
-            requests.put(
-                url, json={'alarm-uuid': ticket.get('uuid')},
-                auth=(jira.get('username'), jira.get('api_token')))
+        responses[ticket['_uuid']] = \
+            {'ticket': ticket['AlarmTitle'], 'response': res.json()}
+        count += 1
+        res = res.json()
+        url = urljoin(
+            jira.get('api_url'),
+            'issue/%s/properties/_data' % (res.get('id')))
+
+        template_hash = hashlib.md5(json.dumps({
+            x: y for x, y in ticket['template'].items()
+            if x in ['title', 'description']}).encode('utf8')).hexdigest()
+
+        requests.put(
+            url, json={
+                'alarm-uuid': ticket.get('_uuid'),
+                'alarm-md5': template_hash
+            }, auth=(jira.get('username'), jira.get('api_token')))
 
     logger.info('[%d/%d] tickets pushed to JIRA successfully.',
                 count, len(tickets))
@@ -315,7 +408,7 @@ def push_tickets(tickets, projects, issue_types, config):
     return responses
 
 
-if __name__ == "__main__":
+def main():
 
     logger.info(str())
     config = read_config()
@@ -327,5 +420,10 @@ if __name__ == "__main__":
     issue_types = get_jira_issue_types(config)
 
     filtered_alarms = filter_alarms(alarms, issues, config)
-    tickets = tickets_from_alarms(filtered_alarms)
+    tickets = tickets_from_alarms(filtered_alarms, config)
     responses = push_tickets(tickets, projects, issue_types, config)
+    print(json.dumps(responses, indent=2))
+
+
+if __name__ == "__main__":
+    main()
