@@ -80,8 +80,7 @@ def get_usm_alarms(config, token):
 
     usm = config['usm']
     curr_time = str(time.time()).replace('.', str())[:13]
-    prev_time = str(int(curr_time) - (
-        config.get('usm_interval', 10) * 60 * 1000))
+    prev_time = str(int(curr_time) - (usm.get('interval', 10) * 60 * 1000))
     params = ['sort=timestamp_occured,desc',
               'timestamp_occured_gte=' + prev_time]
 
@@ -173,21 +172,21 @@ def get_jira_issues(config):
     url = urljoin(jira.get('api_url'), 'search')
     logger.info('Retrieving JIRA issues...')
 
-    if not(jira.get('project_key') and config.get('interval')):
+    if not(jira.get('project_key') and jira.get('interval')):
         logger.info('JIRA project and/or interval for issues are '
                     'missing in config. Only the latest 100 issues '
                     'will be considered.')
 
     query = dict()
-    query['maxResults'] = 100
+    query['maxResults'] = 200
     query['fields'] = ['assignee', 'summary',
                        'description', 'created', 'updated']
-    if jira.get('project_key') or config.get('interval'):
+    if jira.get('project_key') or jira.get('interval'):
         jql = list()
         jql.append('project = %s' % (jira['project_key'])
                    if jira.get('project_key') else str())
-        jql.append('created > -%sm' % (config['interval'])
-                   if config.get('interval') else str())
+        jql.append('created > -%sm' % (jira['interval'])
+                   if jira.get('interval') else str())
 
         jql = ' AND '.join([x for x in jql if x])
         query['jql'] = jql
@@ -245,7 +244,7 @@ def filter_alarms(alarms, issues, config):
             filtered.append(alarm)
 
     if not filtered:
-        logger.info('No alarms left to push to JIRA after '
+        logger.info('No alarms to push to JIRA after '
                     'filtering. Exiting program.')
         exit(0)
 
@@ -256,6 +255,8 @@ def filter_alarms(alarms, issues, config):
 def tickets_from_alarms(alarms, config):
 
     tickets = list()
+    usm = config['usm']
+
     for alarm in alarms:
         ticket = dict()
 
@@ -264,13 +265,17 @@ def tickets_from_alarms(alarms, config):
         ticket['_priority'] = alarm['priority_label']
         ticket['_sources'] = alarm.get('alarm_source_names', list())
         ticket['_dests'] = alarm.get('alarm_destination_names', list())
+        ticket['_sensor'] = alarm.get('alarm_sensor_sources').pop()
 
-        ticket['SensorName'] = 'Test'
         ticket['Hostname'] = alarm.get('http_hostname')
         ticket['MalwareFamily'] = alarm.get('malware_family')
         ticket['AlarmTitle'] = alarm['rule_strategy']
         ticket['SubCategory'] = alarm['rule_method']
         ticket['Date'] = ticket['_timestamp'][2:10].replace('-', str())
+        ticket['SensorName'] = ''.join([
+            usm.get('sensors', dict()).get(x, str())
+            for x in usm.get('sensors', list())
+            if x == ticket['_sensor']]) or 'Unknown'
 
         ticket['PrivateIP'] = [
             x for x in [*ticket['_sources'], *ticket['_dests']]
@@ -287,7 +292,6 @@ def tickets_from_alarms(alarms, config):
 
         tickets.append(ticket)
 
-    usm = config['usm']
     for ticket in tickets:
         ticket_template = dict()
         for template in usm.get('templates'):
@@ -318,6 +322,30 @@ def tickets_from_alarms(alarms, config):
 
         ticket['template'] = ticket_template
     return tickets
+
+
+def filter_duplicate_tickets(issues, tickets):
+
+    filtered = list()
+    posted_md5s = [x['properties']['alarm-md5'] for x in issues if x.get(
+        'properties', dict()).get('alarm-md5')]
+
+    for ticket in tickets:
+        template_hash = hashlib.md5(json.dumps({
+            x: y for x, y in ticket['template'].items()
+            if x in ['title', 'description']}).encode('utf8')).hexdigest()
+
+        if template_hash not in posted_md5s:
+            filtered.append(ticket)
+
+    if not filtered:
+        logger.info('No tickets to push to JIRA after pruning '
+                    'duplicates. Exiting program.')
+        exit(0)
+
+    logger.info('[%d] tickets remained after '
+                'removing duplicates.', len(filtered))
+    return filtered
 
 
 def push_tickets(tickets, projects, issue_types, config):
@@ -357,8 +385,9 @@ def push_tickets(tickets, projects, issue_types, config):
         }
     }
     logger.info('Pushing tickets to JIRA...')
-    responses = dict()
+    responses = list()
     count = 0
+
     for ticket in tickets:
 
         url = urljoin(jira.get('api_url'), 'issue')
@@ -375,17 +404,21 @@ def push_tickets(tickets, projects, issue_types, config):
             jira.get('username'), jira.get('api_token')))
 
         if res.status_code >= 300:
-            responses[ticket['_uuid']] = {
+            responses.append({
+                'alarm_id': ticket['_uuid'],
                 'ticket': ticket['AlarmTitle'],
                 'response': {
                     'code': res.status_code,
                     'content': res.content.decode('utf8')
                 }
-            }
+            })
             continue
 
-        responses[ticket['_uuid']] = \
-            {'ticket': ticket['AlarmTitle'], 'response': res.json()}
+        responses.append({
+            'alarm_id': ticket['_uuid'],
+            'ticket': ticket['AlarmTitle'],
+            'response': res.json()
+        })
         count += 1
         res = res.json()
         url = urljoin(
@@ -395,7 +428,6 @@ def push_tickets(tickets, projects, issue_types, config):
         template_hash = hashlib.md5(json.dumps({
             x: y for x, y in ticket['template'].items()
             if x in ['title', 'description']}).encode('utf8')).hexdigest()
-
         requests.put(
             url, json={
                 'alarm-uuid': ticket.get('_uuid'),
@@ -406,6 +438,52 @@ def push_tickets(tickets, projects, issue_types, config):
                 count, len(tickets))
     logger.info(str())
     return responses
+
+
+def alert_on_slack(data, config):
+
+    if not config.get('slack', dict()).get('webhooks'):
+        logger.info('No webhook is specified. Skipping slack push.')
+        return
+
+    categories = {'success': list(), 'erred': list()}
+    for entry in data:
+        if entry.get('response', dict()).get('key'):
+            categories['success'].append(entry)
+        if entry.get('response', dict()).get('code'):
+            categories['erred'].append(entry)
+
+    prepared_string = config.get('slack', dict()).get('prefix', str()) + '\n'
+    prepared_string += '*[%d/%d]* tickets pushed to JIRA ' \
+        'successfully.\n' % (len(categories['success']), len(data))
+
+    for entry in categories['success']:
+        prepared_string += '> *`%s`* %s\n' % (
+            entry['response']['key'], entry['ticket'])
+    for entry in categories['erred']:
+        prepared_string += '> *`Push failed [code: %s]`* %s)\n' % (
+            entry['response']['code'], entry['ticket'])
+
+    for url in config['slack']['webhooks']:
+        response, _count = (None, 0)
+        while not response and _count < 5:
+            try:
+                response = requests.post(url, json={
+                    'text': prepared_string})
+            except:
+                logger.info('Could not send slack request. ' +
+                            'Retrying after 10 secs...')
+                time.sleep(10)
+                _count += 1
+
+        if not response:
+            continue
+
+        if response.status_code == 200:
+            logger.info('Pushed message to slack successfully.')
+        else:
+            logger.info('Could not push message to slack: <(%s) %s>' % (
+                response.status_code, response.content.decode('utf8')))
 
 
 def main():
@@ -421,7 +499,9 @@ def main():
 
     filtered_alarms = filter_alarms(alarms, issues, config)
     tickets = tickets_from_alarms(filtered_alarms, config)
+    tickets = filter_duplicate_tickets(issues, tickets)
     responses = push_tickets(tickets, projects, issue_types, config)
+    alert_on_slack(responses, config)
     print(json.dumps(responses, indent=2))
 
 
