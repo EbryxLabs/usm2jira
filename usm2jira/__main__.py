@@ -5,6 +5,7 @@ import time
 import logging
 import hashlib
 import requests
+import opencrypt
 import ipaddress as ipaddr
 from urllib.parse import urljoin
 
@@ -19,15 +20,34 @@ logger.addHandler(handler)
 def read_config():
 
     if not os.environ.get('CONFIG_FILE'):
-        logger.info('No CONFIG_FILE environment variable is defined.')
-        exit(1)
+        exit('No CONFIG_FILE environment variable exists.\n')
 
-    if not os.path.isfile(os.environ.get('CONFIG_FILE')):
-        logger.info('No file exists on CONFIG_FILE path defined.')
-        exit(1)
+    config_file = os.environ['CONFIG_FILE']
+    if config_file.startswith(('http', 'https', 'ftp')):
+        logger.info('Config file prefix tells program to fetch it online.')
+        logger.info('Fetching config file: %s' % (config_file))
+        response = requests.get(config_file)
 
+        if response.status_code < 400:
+            ciphertext = response.content
+        else:
+            logger.info('Could not fetch config file: %s' % (response))
+            exit('Exiting program.\n')
+
+    else:
+        logger.info('Config file prefix tells program to search ' +
+                    'for it on filesystem.')
+
+        if not os.path.isfile(config_file):
+            exit('Config file doesn\'t exist on ' +
+                 'filesystem: %s\n' % (config_file))
+
+        ciphertext = open(config_file, 'rb').read()
+
+    content = opencrypt.decrypt_file(
+        ciphertext, write_to_file=False, is_ciphertext=True)
     try:
-        config = json.load(open(os.environ.get('CONFIG_FILE'), 'r'))
+        config = json.loads(content)
         validate_config(config)
         return config
     except json.JSONDecodeError as exc:
@@ -406,7 +426,8 @@ def push_tickets(tickets, projects, issue_types, config):
         if res.status_code >= 300:
             responses.append({
                 'alarm_id': ticket['_uuid'],
-                'ticket': ticket['AlarmTitle'],
+                'ticket': '%s - %s' % (
+                    ticket['AlarmTitle'], ticket['SubCategory']),
                 'response': {
                     'code': res.status_code,
                     'content': res.content.decode('utf8')
@@ -416,7 +437,8 @@ def push_tickets(tickets, projects, issue_types, config):
 
         responses.append({
             'alarm_id': ticket['_uuid'],
-            'ticket': ticket['AlarmTitle'],
+            'ticket': '%s - %s' % (
+                ticket['AlarmTitle'], ticket['SubCategory']),
             'response': res.json()
         })
         count += 1
