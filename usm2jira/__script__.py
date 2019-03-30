@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import json
 import time
@@ -6,7 +7,7 @@ import logging
 import hashlib
 import requests
 import opencrypt
-import ipaddress as ipaddr
+# import ipaddress as ipaddr
 from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,46 @@ def validate_config(config):
         logger.info('`api_url`, `client_id` and `client_secret` are '
                     'required for `usm` field.')
         exit(1)
+
+    if not usm.get('templates'):
+        logger.info('No `templates` field has been specified in config.')
+        exit(1)
+
+    for template in usm['templates']:
+        if not(template.get('filename') or (template.get('title') and
+               template.get('description'))):
+            logger.info('`filename` or `title, description` fields are '
+                        'required in each template.')
+
+        if template.get('title') and template.get('description'):
+            continue
+
+        if template['filename'].startswith(('http', 'https', 'ftp')):
+            logger.info('Fetching template file: %s' % (template['filename']))
+            response = requests.get(template['filename'])
+
+            if response.status_code < 400:
+                content = response.content
+            else:
+                logger.info('Could not fetch config file: %s' % (response))
+                exit('Exiting program.\n')
+
+        else:
+            if template['filename'] and not os.path.isfile(
+                    template['filename']):
+                logger.info('Template filename could not be found: '
+                            '%s' % (template['filename']))
+                exit(1)
+            else:
+                content = open(template['filename'], 'r').read()
+
+        try:
+            template_content = json.loads(content)
+            template.update(template_content)
+        except json.JSONDecodeError:
+            logger.info('Could not parse template file: %s',
+                        template['filename'])
+            exit(1)
 
     jira = config['jira']
     if not(jira.get('api_url') and jira.get(
@@ -287,35 +328,38 @@ def tickets_from_alarms(alarms, config):
         ticket['_dests'] = alarm.get('alarm_destination_names', list())
         ticket['_sensor'] = alarm.get('alarm_sensor_sources').pop()
 
-        ticket['Hostname'] = alarm.get('http_hostname')
-        ticket['MalwareFamily'] = alarm.get('malware_family')
-        ticket['AlarmTitle'] = alarm['rule_strategy']
-        ticket['SubCategory'] = alarm['rule_method']
-        ticket['Date'] = ticket['_timestamp'][2:10].replace('-', str())
         ticket['SensorName'] = ''.join([
             usm.get('sensors', dict()).get(x, str())
             for x in usm.get('sensors', list())
             if x == ticket['_sensor']]) or 'Unknown'
+        ticket['Date'] = ticket['_timestamp'][2:10].replace('-', str())
+        ticket.update(alarm)
 
-        ticket['PrivateIP'] = [
-            x for x in [*ticket['_sources'], *ticket['_dests']]
-            if ipaddr.ip_address(x).is_private]
-        ticket['PublicIP'] = [
-            x for x in [*ticket['_sources'], *ticket['_dests']]
-            if not ipaddr.ip_address(x).is_private]
+        # ticket['Hostname'] = alarm.get('http_hostname')
+        # ticket['MalwareFamily'] = alarm.get('malware_family')
+        # ticket['AlarmTitle'] = alarm['rule_strategy']
+        # ticket['SubCategory'] = alarm['rule_method']
 
-        ticket.pop('PrivateIP') if not ticket.get('PrivateIP') else str()
-        ticket.pop('PublicIP') if not ticket.get('PublicIP') else str()
-        ticket.pop('Hostname') if not ticket.get('Hostname') else str()
-        ticket.pop('MalwareFamily') if not \
-            ticket.get('MalwareFamily') else str()
+        # ticket['PrivateIP'] = [
+        #     x for x in [*ticket['_sources'], *ticket['_dests']]
+        #     if ipaddr.ip_address(x).is_private]
+        # ticket['PublicIP'] = [
+        #     x for x in [*ticket['_sources'], *ticket['_dests']]
+        #     if not ipaddr.ip_address(x).is_private]
+
+        # ticket.pop('PrivateIP') if not ticket.get('PrivateIP') else str()
+        # ticket.pop('PublicIP') if not ticket.get('PublicIP') else str()
+        # ticket.pop('Hostname') if not ticket.get('Hostname') else str()
+        # ticket.pop('MalwareFamily') if not \
+        #     ticket.get('MalwareFamily') else str()
 
         tickets.append(ticket)
 
     for ticket in tickets:
         ticket_template = dict()
         for template in usm.get('templates'):
-            if ticket['AlarmTitle'] in template.get('triggers'):
+            if ticket['rule_strategy'] in template.get('triggers') or \
+                    ticket['rule_method'] in template.get('triggers'):
                 ticket_template = template.copy()
                 break
 
@@ -325,20 +369,27 @@ def tickets_from_alarms(alarms, config):
         for key in ticket:
             if key.startswith('_'):
                 continue
-            if isinstance(ticket[key], list):
-                ticket[key] = ', '.join(ticket[key])
 
-            if ticket_template.get('title'):
+            if key in ticket_template.get('title'):
+                if isinstance(ticket[key], list):
+                    ticket[key] = ', '.join(ticket[key])
                 ticket_template['title'] = ticket_template['title'] \
-                    .replace('$%s' % (key), ticket[key])
+                    .replace('$%s' % (key), str(ticket[key]))
 
             if not ticket_template.get('description'):
                 continue
 
-            description = list()
-            for desc in ticket_template['description']:
-                description.append(desc.replace('$%s' % (key), ticket[key]))
-            ticket_template['description'] = description
+            for idx, desc in enumerate(ticket_template['description']):
+                if key in desc:
+                    if isinstance(ticket[key], list):
+                        ticket[key] = ', '.join(ticket[key])
+                    desc = desc.replace('$%s' % (key), str(ticket[key]))
+                    ticket_template['description'][idx] = desc
+
+        for idx, desc in enumerate(ticket_template['description']):
+            for variable in re.findall(r'(\$[\w-]*)', desc):
+                desc = desc.replace(variable, 'unknown')
+                ticket_template['description'][idx] = desc
 
         ticket['template'] = ticket_template
     return tickets
@@ -412,6 +463,7 @@ def push_tickets(tickets, projects, issue_types, config):
 
         url = urljoin(jira.get('api_url'), 'issue')
         ticket_data = json.dumps(data)
+
         ticket_data = ticket_data \
             .replace('{title}', ticket['template']['title']) \
             .replace('{description}', '\\n\\n'.join(
@@ -427,7 +479,7 @@ def push_tickets(tickets, projects, issue_types, config):
             responses.append({
                 'alarm_id': ticket['_uuid'],
                 'ticket': '%s - %s' % (
-                    ticket['AlarmTitle'], ticket['SubCategory']),
+                    ticket['rule_strategy'], ticket['rule_method']),
                 'response': {
                     'code': res.status_code,
                     'content': res.content.decode('utf8')
@@ -438,7 +490,7 @@ def push_tickets(tickets, projects, issue_types, config):
         responses.append({
             'alarm_id': ticket['_uuid'],
             'ticket': '%s - %s' % (
-                ticket['AlarmTitle'], ticket['SubCategory']),
+                ticket['rule_strategy'], ticket['rule_method']),
             'response': res.json()
         })
         count += 1
