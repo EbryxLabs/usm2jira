@@ -294,11 +294,18 @@ def filter_alarms(alarms, issues, config):
 
         is_triggered = False
         for template in usm['templates']:
-            if not(alarm.get('rule_strategy') in template.get(
-                    'triggers', list()) or alarm.get('rule_method') in
-                    template.get('triggers', list())):
-                continue
-            is_triggered = True
+
+            if isinstance(template.get('triggers'), dict):
+                for key, value in template.get('triggers').items():
+                    if key in alarm and value.strip(
+                            '*').lower() in alarm[key].lower():
+                        is_triggered = True
+
+            if isinstance(template.get('triggers'), list):
+                triggers = template.get('triggers', list())
+                if alarm.get('rule_strategy') in triggers or \
+                        alarm.get('rule_method') in triggers:
+                    is_triggered = True
 
         if is_triggered:
             filtered.append(alarm)
