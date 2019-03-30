@@ -7,7 +7,6 @@ import logging
 import hashlib
 import requests
 import opencrypt
-# import ipaddress as ipaddr
 from urllib.parse import urljoin
 
 logger = logging.getLogger(__name__)
@@ -334,25 +333,6 @@ def tickets_from_alarms(alarms, config):
             if x == ticket['_sensor']]) or 'Unknown'
         ticket['Date'] = ticket['_timestamp'][2:10].replace('-', str())
         ticket.update(alarm)
-
-        # ticket['Hostname'] = alarm.get('http_hostname')
-        # ticket['MalwareFamily'] = alarm.get('malware_family')
-        # ticket['AlarmTitle'] = alarm['rule_strategy']
-        # ticket['SubCategory'] = alarm['rule_method']
-
-        # ticket['PrivateIP'] = [
-        #     x for x in [*ticket['_sources'], *ticket['_dests']]
-        #     if ipaddr.ip_address(x).is_private]
-        # ticket['PublicIP'] = [
-        #     x for x in [*ticket['_sources'], *ticket['_dests']]
-        #     if not ipaddr.ip_address(x).is_private]
-
-        # ticket.pop('PrivateIP') if not ticket.get('PrivateIP') else str()
-        # ticket.pop('PublicIP') if not ticket.get('PublicIP') else str()
-        # ticket.pop('Hostname') if not ticket.get('Hostname') else str()
-        # ticket.pop('MalwareFamily') if not \
-        #     ticket.get('MalwareFamily') else str()
-
         tickets.append(ticket)
 
     for ticket in tickets:
