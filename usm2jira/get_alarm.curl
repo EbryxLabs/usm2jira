@@ -1,0 +1,11 @@
+get_usm_alarm () {
+  access_token=$(curl --data '{"grant_type":"client_credentials"}' \
+    --user "$2:$3" --request POST ${1%/}/oauth/token?grant_type=client_credentials \
+    | jq -r '.access_token')
+  
+  curl -H "Authorization: Bearer $access_token" \
+    --request GET ${1%/}/alarms/$4 | jq
+}
+
+# usage is as follows.
+# get_usm_alarm <api-url> <client-id> <client-secret> <alarm-uuid>
