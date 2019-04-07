@@ -1,0 +1,12 @@
+{
+  "title": "$SensorName - High - $AlarmTitle ($SubCategory) [$Date]",
+  "description": [
+    "*Sensor:* $SensorName",
+    "*Alarm:* $rule_strategy",
+    "*Infected Host:* $alarm_source_names",
+    "*External IP:* $alarm_destination_names",
+    "*Risk:* High",
+    "*Description:*\\n A sample description.",
+    "*Actions & Remediation:*\\n \\n- Step.1 \\n- Step.2"
+  ]
+}
