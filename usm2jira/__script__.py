@@ -9,6 +9,7 @@ import requests
 import opencrypt
 from urllib.parse import urljoin
 
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
