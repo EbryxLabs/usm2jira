@@ -3,6 +3,21 @@ usm2jira is a tool written in python to automate push of AlientVault's USM alarm
 
 Confguration file in `.json` format is given in encrypted form and program decrypts it using AES keys provided in environment. For more information on encryption / decryption, look at [**opencrypt**](https://pypi.org/project/opencrypt/) library of python.
 
+## AWS Lambda Deployment
+Create a deployment package, place it to S3 so you can specify it in your cloudformation process. You need make an archive containing all the required libraries as mentioned in `requirements.txt` file and python scripts containing the code.
+```
+cd /path/to/env/lib/pythonx.x/site-packages/
+zip -r9 <archive-name> *
+```
+From root directory of the project, add python scripts to the same archive you created above:
+```
+zip -g <archive-name> setup.py script.py
+zip -g <archive-name> usm2jira/*py
+```
+`script.main` is the invoker function for AWS Lambda. Otherwise, you can run locally by typing:
+```
+python script.py
+```
 
 ## Configuration
 Program expects three subsections in your `.json` file as follows.

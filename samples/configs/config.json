@@ -3,14 +3,14 @@
 		"api_url": "https://<hosted-USM-REST-url>",
 		"client_id": "<your-USM-client-id>",
 		"client_secret": "<your-USM-client-secret>",
-		"interval": <int_inetrval_in_minutes>,
+		"interval": "<interval_in_minutes>",
 		"sensors": {
 			"uuid-1": "name-1",
 			"uuid-2": "name-2"
 		},
 		"templates": [
 			{
-				"triggers": ["<USM-alarm-title>", "<USM-alarm-subtitle>", ...],
+				"triggers": ["<USM-alarm-title>", "<USM-alarm-subtitle>", "..."],
 				"filename": "./my-sample-template.json"
 			}
 		]
@@ -21,12 +21,12 @@
 		"api_token": "<your-api-token>",
 		"project_key": "<project-key>",
 		"issue_type": "story",
-		"interval": <int_inetrval_in_minutes>
+		"interval": "<interval_in_minutes>"
 	},
 	"slack": {
 		"webhooks": [
 			"https://<hook-url>",
-			...
+			"..."
 		]
 	}
 }
