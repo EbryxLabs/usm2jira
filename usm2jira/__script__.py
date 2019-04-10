@@ -141,7 +141,8 @@ def get_usm_alarms(config, token):
 
     usm = config['usm']
     curr_time = str(time.time()).replace('.', str())[:13]
-    prev_time = str(int(curr_time) - (usm.get('interval', 10) * 60 * 1000))
+    prev_time = str(int(curr_time) - (int(usm.get(
+        'interval', '10')) * 60 * 1000))
     params = ['sort=timestamp_occured,desc',
               'timestamp_occured_gte=' + prev_time]
 

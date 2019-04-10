@@ -2,7 +2,7 @@ import json
 from usm2jira import *
 
 
-def main():
+def main(event, context):
 
     config = read_config()
     token = get_auth_token(config)
@@ -21,4 +21,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    main({}, {})
