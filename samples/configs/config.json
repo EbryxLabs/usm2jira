@@ -1,6 +1,6 @@
 {
 	"usm": {
-		"api_url": "https://<hosted-USM-REST-url>",
+		"api_url": "https://<hosted-USM-REST-url>/api/2.0/",
 		"client_id": "<your-USM-client-id>",
 		"client_secret": "<your-USM-client-secret>",
 		"interval": "<interval_in_minutes>",
@@ -16,7 +16,7 @@
 		]
 	},
 	"jira": {
-		"api_url": "https://<your-JIRA-REST-url>",
+		"api_url": "https://<your-JIRA-REST-url>/rest/api/2/",
 		"username": "<your-username>",
 		"api_token": "<your-api-token>",
 		"project_key": "<project-key>",

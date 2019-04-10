@@ -8,4 +8,4 @@ get_usm_alarm () {
 }
 
 # usage is as follows.
-# get_usm_alarm <api-url> <client-id> <client-secret> <alarm-uuid>
+# get_usm_alarm <api-url>/api/2.0/ <client-id> <client-secret> <alarm-uuid>
