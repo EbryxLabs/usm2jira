@@ -32,7 +32,7 @@ As you can guess, each section defines options for respective tools i.e. **USM**
 For USM's API authentication, you should provide the api url for your hosted USM, client id and secret.
 ```
 "usm": {
-  "api_url": "https://<hosted-USM-REST-url>",
+  "api_url": "https://<hosted-USM-REST-url>/api/2.0/",
   "client_id": "<your-USM-client-id>",
   "client_secret": "<your-USM-client-secret>",
   ...
@@ -117,14 +117,14 @@ You can use `$fieldName` for outer fields. e.g. `$uuid` will compute the id for 
 You can manually call your USM REST API and check the alarm response or you could use a ready-made bash function to quickly look over alarm response.
 ```
 $: source usm2jira/get_alarm.curl
-$: get_usm_alarm <api-url> <client-id> <client-secret> <alarm-uuid>
+$: get_usm_alarm <api-url>/api/2.0/ <client-id> <client-secret> <alarm-uuid>
 ```
 
 ## JIRA Options
 Just like USM, you have to provide authentication details for JIRA's REST API.
 ```
 "jira": {
-  "api_url": "https://<your-JIRA-REST-url>",
+  "api_url": "https://<your-JIRA-REST-url>/rest/api/2/",
   "username": "<your-username>",
   "api_token": "<your-api-token>",
   ...
