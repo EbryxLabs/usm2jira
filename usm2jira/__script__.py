@@ -336,6 +336,11 @@ def tickets_from_alarms(alarms, config):
         ticket['_dests'] = alarm.get('alarm_destination_names', list())
         ticket['_sensor'] = alarm.get('alarm_sensor_sources').pop()
 
+        alarm['timestamp_occured_iso8601'] = alarm[
+            'timestamp_occured_iso8601'].split('T')[-1][:5]
+        alarm['timestamp_received_iso8601'] = alarm[
+            'timestamp_received_iso8601'].split('T')[-1][:5]
+
         ticket['SensorName'] = ''.join([
             usm.get('sensors', dict()).get(x, str())
             for x in usm.get('sensors', list())
@@ -359,7 +364,9 @@ def tickets_from_alarms(alarms, config):
             if key.startswith('_'):
                 continue
 
-            if key in ticket_template.get('title'):
+            title_vars = re.findall(r'(\$[\w-]*)',
+                                    ticket_template.get('title'))
+            if '$' + key in title_vars:
                 if isinstance(ticket[key], list):
                     ticket[key] = ', '.join(ticket[key])
                 ticket_template['title'] = ticket_template['title'] \
@@ -369,7 +376,8 @@ def tickets_from_alarms(alarms, config):
                 continue
 
             for idx, desc in enumerate(ticket_template['description']):
-                if key in desc:
+                desc_vars = re.findall(r'(\$[\w-]*)', desc)
+                if '$' + key in desc_vars:
                     if isinstance(ticket[key], list):
                         ticket[key] = ', '.join(ticket[key])
                     desc = desc.replace('$%s' % (key), str(ticket[key]))
@@ -391,6 +399,9 @@ def filter_duplicate_tickets(issues, tickets):
         'properties', dict()).get('alarm-md5')]
 
     for ticket in tickets:
+        if not ticket.get('template'):
+            continue
+
         template_hash = hashlib.md5(json.dumps({
             x: y for x, y in ticket['template'].items()
             if x in ['title', 'description']}).encode('utf8')).hexdigest()
@@ -460,7 +471,12 @@ def push_tickets(tickets, projects, issue_types, config):
             .replace('{project_id}', project_id) \
             .replace('{issuetype_id}', issuetype_id) \
 
-        ticket_data = json.loads(ticket_data)
+        try:
+            ticket_data = json.loads(ticket_data)
+        except json.JSONDecodeError as exc:
+            logger.info(exc)
+            continue
+
         res = requests.post(url, json=ticket_data, auth=(
             jira.get('username'), jira.get('api_token')))
 

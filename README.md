@@ -61,13 +61,21 @@ Lastly, you have to provide one or more templates that will be used to post that
     {
       "triggers": ["<USM-alarm-title>", "<USM-alarm-subtitle>", ...],
       "filename": "./my-sample-template.json"
-    },
+    }, {
+      "triggers": {
+        "app_type": "cloudflare",
+        "rule_intent": "Delivery & Attack",
+        "rule_strategy": "WebServer Attack",
+        "rule_name": "CF WAF Action Drop*"
+      },
+      "filename": "./my-sample-template-2.json"
+    }
     ...
   ],
   ...
 }
 ```
-**`triggers`** can be used to detect only certain alarms from USM. Each alarm in USM has a title and a sub-title associated with it. You can specify title, sub-title or both and filter out rest of the alarms.  
+**`triggers`** can be used to detect only certain alarms from USM. Each alarm in USM has a title and a sub-title associated with it. You can specify title, sub-title or both and filter out rest of the alarms. Moreover, you can specify `app_type`, `rule_intent`, `rule_strategy` and `rule_name` in **`triggers`** instead of alarm title / subtitle. These fields can be fetched from USM alarm response returned from REST API.  
 External template files can be placed locally or over the internet. Make sure to specify the correct url, and check accessibility, if template file is on internet.  
 `my-sample-template.json` which is given above as external template file has to follow a json format:
 ```
