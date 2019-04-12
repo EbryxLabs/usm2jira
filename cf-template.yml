@@ -9,11 +9,9 @@ Parameters:
   S3BucketName:
     Type: String
     Description: S3 bucket name containing lambda code.
-    NoEcho: true
   S3CodeArchivePath:
     Type: String
     Description: Lambda code path inside selected S3 bucket.
-    NoEcho: true
   AESKey:
     Type: String
     Description: AES key that code needs to decrypt config file.
@@ -25,7 +23,6 @@ Parameters:
   ConfigFile:
     Type: String
     Description: S3 public path to config file.
-    NoEcho: true
 Resources:
   IAMRoleInstance:
     Type: 'AWS::IAM::Role'
