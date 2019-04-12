@@ -1,5 +1,5 @@
 {
-  "title": "$SensorName - High - $AlarmTitle ($SubCategory) [$Date]",
+  "title": "$SensorName - High - $rule_strategy ($rule_method) [$Date]",
   "description": [
     "*Sensor:* $SensorName",
     "*Alarm:* $rule_strategy",
