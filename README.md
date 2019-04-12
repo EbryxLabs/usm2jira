@@ -7,7 +7,7 @@ Confguration file in `.json` format is given in encrypted form and program decry
 Create a deployment package, place it to S3 so you can specify it in your cloudformation process. You need make an archive containing all the required libraries as mentioned in `requirements.txt` file and python scripts containing the code.
 ```
 cd /path/to/env/lib/pythonx.x/site-packages/
-zip -r9 <archive-name> *
+zip -r9 <archive-name> ./
 ```
 From root directory of the project, add python scripts to the same archive you created above:
 ```
