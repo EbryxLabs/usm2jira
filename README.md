@@ -80,7 +80,7 @@ External template files can be placed locally or over the internet. Make sure to
 `my-sample-template.json` which is given above as external template file has to follow a json format:
 ```
 {
-  "title": "$SensorName - High - $AlarmTitle ($SubCategory) [$Date]",
+  "title": "$SensorName - High - $rule_strategy ($rule_method) [$Date]",
   "description": [
     "*Sensor:* $SensorName",
     "*Alarm:* $rule_strategy",

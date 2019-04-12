@@ -204,7 +204,7 @@ def get_jira_issue_types(config):
     url = urljoin(jira.get('api_url'), 'issuetype')
     logger.info('Retrieving JIRA issue types...')
 
-    query = {'fields': ['id', 'name', 'subtask']}
+    query = {'fields': ['id', 'name', 'subtask', 'scope']}
     logger.debug('Using query: %s', query)
     res = requests.get(url, auth=(jira.get('username'), jira.get('api_token')))
 
@@ -439,7 +439,13 @@ def push_tickets(tickets, projects, issue_types, config):
     for itype in issue_types:
         if not(itype.get('name') and itype.get('id')):
             continue
-        if itype['name'].lower() == jira.get('issue_type').lower():
+        if not issuetype_id and itype['name'].lower() == \
+                jira.get('issue_type').lower() and not itype.get('scope'):
+            issuetype_id = itype['id']
+        elif itype['name'].lower() == jira.get('issue_type') \
+                .lower() and itype.get('scope') and itype['scope'] \
+                .get('project') and itype['scope']['project'] \
+                .get('id') and itype['scope']['project']['id'] == project_id:
             issuetype_id = itype['id']
             break
 
