@@ -279,6 +279,39 @@ def get_jira_issues(config):
     return list()
 
 
+def get_jira_users(config):
+
+    jira = config['jira']
+    url = urljoin(jira.get('api_url'),
+                  'user/search?startAt=0&maxResults=1000&username=_')
+    logger.info('Retrieving JIRA users...')
+
+    query = {'fields': [
+        'key', 'name', 'emailAddress', 'displayName', 'active']}
+    res = requests.get(url, auth=(jira.get('username'), jira.get('api_token')))
+
+    if res.status_code < 300:
+        users = list()
+        for value in res.json():
+            if value.get('key', str()).startswith('addon_'):
+                continue
+            users.append({
+                key: value for (key, value) in value.items()
+                if key in query['fields']
+            })
+
+        if not users:
+            logger.info('JIRA has no users. User assignment will not work.')
+            return users
+
+        logger.info('[%d] users fetched from JIRA.', len(users))
+        logger.info(str())
+        return users
+
+    logger.info('Unexpected response returned: %s', res)
+    return list()
+
+
 def filter_alarms(alarms, issues, config):
 
     filtered = list()
@@ -294,22 +327,21 @@ def filter_alarms(alarms, issues, config):
         if alarm['uuid'] in posted_uuids:
             continue
 
-        is_triggered = False
+        is_triggered = list()
         for template in usm['templates']:
 
             if isinstance(template.get('triggers'), dict):
                 for key, value in template.get('triggers').items():
-                    if key in alarm and value.strip(
-                            '*').lower() in alarm[key].lower():
-                        is_triggered = True
+                    is_triggered.append(key in alarm and value.strip(
+                        '*').lower() in alarm[key].lower())
 
             if isinstance(template.get('triggers'), list):
                 triggers = template.get('triggers', list())
                 if alarm.get('rule_strategy') in triggers or \
                         alarm.get('rule_method') in triggers:
-                    is_triggered = True
+                    is_triggered.append(True)
 
-        if is_triggered:
+        if is_triggered and False not in is_triggered:
             filtered.append(alarm)
 
     if not filtered:
@@ -341,10 +373,16 @@ def tickets_from_alarms(alarms, config):
         alarm['timestamp_received_iso8601'] = alarm[
             'timestamp_received_iso8601'].split('T')[-1][:5]
 
-        ticket['SensorName'] = ''.join([
-            usm.get('sensors', dict()).get(x, str())
-            for x in usm.get('sensors', list())
-            if x == ticket['_sensor']]) or 'Unknown'
+        selectedSensor = [
+            usm.get('sensors', dict()).get(x, dict())
+            for x in usm.get('sensors', dict())
+            if x == ticket['_sensor']].pop()
+
+        ticket['SensorName'] = selectedSensor.get('name', 'Unknown')
+        if selectedSensor:
+            ticket['Assignee'] = selectedSensor.get('assignee', str())
+            ticket['Labels'] = selectedSensor.get('labels', list())
+
         ticket['Date'] = ticket['_timestamp'][2:10].replace('-', str())
         ticket.update(alarm)
         tickets.append(ticket)
@@ -419,7 +457,7 @@ def filter_duplicate_tickets(issues, tickets):
     return filtered
 
 
-def push_tickets(tickets, projects, issue_types, config):
+def push_tickets(tickets, projects, issue_types, users, config):
 
     project_id = 0
     jira = config['jira']
@@ -461,11 +499,25 @@ def push_tickets(tickets, projects, issue_types, config):
             'description': '{description}'
         }
     }
+
     logger.info('Pushing tickets to JIRA...')
     responses = list()
     count = 0
 
     for ticket in tickets:
+
+        if ticket.get('Assignee'):
+            target = ticket['Assignee']
+            for user in users:
+                if not user.get('name'):
+                    continue
+                if '@' in target and user.get('emailAddress') == target:
+                    data['fields']['assignee'] = {'name': user['name']}
+                elif '@' not in target and user.get('displayName') == target:
+                    data['fields']['assignee'] = {'name': user['name']}
+
+        if ticket.get('Labels'):
+            data['fields']['labels'] = ticket['Labels']
 
         url = urljoin(jira.get('api_url'), 'issue')
         ticket_data = json.dumps(data)

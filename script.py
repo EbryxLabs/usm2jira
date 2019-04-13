@@ -11,11 +11,13 @@ def main(event, context):
     issues = get_jira_issues(config)
     projects = get_jira_projects(config)
     issue_types = get_jira_issue_types(config)
+    jira_users = get_jira_users(config)
 
     filtered_alarms = filter_alarms(alarms, issues, config)
     tickets = tickets_from_alarms(filtered_alarms, config)
     tickets = filter_duplicate_tickets(issues, tickets)
-    responses = push_tickets(tickets, projects, issue_types, config)
+    responses = push_tickets(tickets, projects,
+                             issue_types, jira_users, config)
     alert_on_slack(responses, config)
     print(json.dumps(responses, indent=2))
 
