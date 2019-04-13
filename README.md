@@ -47,36 +47,40 @@ You can detect the sensor ids from `Data Sources > Sensors` page of your USM das
 ```
 "usm": {
   "sensors": {
-    "uuid-1": "name-1",
-    "uuid-2": "name-2",
+    "<sensor-1-uuid>": {
+      "name": "<sensor-name>",
+      "assignee": "<jira-user-email or jira-display-name>",
+      "labels": ["L1", "L2"]
+    },
+    "<sensor-2-uuid>": {...},
     ...
   },
   ...
 }
 ```
-Lastly, you have to provide one or more templates that will be used to post that to JIRA. Each template has **`triggers`** which are compared against alarm titles and subcategories returned from USM REST api. You can either have **`title`** and **`description`** for each template or **`filename`** field specifying template as an external file.
+You can also provide an **`assignee`** and a list of **`labels`** against each sensor and program will user user and labels in JIRA when a ticket against the alarm is created. **`assignee`** can be email address of user or display name of user in JIRA.  
+  
+Lastly, you have to provide one or more templates that will be used to post that to JIRA. Each template has **`triggers`** which are compared against alarm response from USM REST api. You can either have **`title`** and **`description`** for each template or **`filename`** field specifying template as an external file.
 ```
 "usm": {
   "templates": [
     {
-      "triggers": ["<USM-alarm-title>", "<USM-alarm-subtitle>", ...],
-      "filename": "./my-sample-template.json"
-    }, {
       "triggers": {
         "app_type": "cloudflare",
         "rule_intent": "Delivery & Attack",
         "rule_strategy": "WebServer Attack",
         "rule_name": "CF WAF Action Drop*"
       },
-      "filename": "./my-sample-template-2.json"
-    }
+      "filename": "./my-sample-template.json"
+    },
     ...
   ],
   ...
 }
 ```
-**`triggers`** can be used to detect only certain alarms from USM. Each alarm in USM has a title and a sub-title associated with it. You can specify title, sub-title or both and filter out rest of the alarms. Moreover, you can specify `app_type`, `rule_intent`, `rule_strategy` and `rule_name` in **`triggers`** instead of alarm title / subtitle. These fields can be fetched from USM alarm response returned from REST API.  
-External template files can be placed locally or over the internet. Make sure to specify the correct url, and check accessibility, if template file is on internet.  
+**`triggers`** can be used to detect only certain alarms from USM. You can specify any key from response of USM api and filter out alarms by providing your desired values against those keys as shown above.  
+  
+External template files can be placed locally or online. Make sure to specify the correct url, and check accessibility, if template file is online.  
 `my-sample-template.json` which is given above as external template file has to follow a json format:
 ```
 {
@@ -101,7 +105,7 @@ Keywords starting with `$` sign are variables that are populated using the data 
 You can use any variable in template of your choice and if it's not detected in alarm response of USM, it will be replaced by `unknown` keyword. Program maps the keys from USM response to template variables. For example, if an alarm response has a field `rule_strategy` and template file specifies `$rule_strategy`, program will compute the value from USM.  
 `$SensorName` and `$Date` are computed by program itself and independent of USM response fields.
 
-#### Nested Fields
+#### Nested Fields ( Not implemented yet... )
 Consider the following response from USM.
 ```
 {
@@ -146,13 +150,14 @@ Also provide JIRA's project you want to push the tickets to and type of ticket /
   ...
 }
 ```
-> Issue types other than `story` are not tested. Use them at your own risk.
+> Issue types other than `story` are not tested. Use them at your own risk.  
+> You have to provide **project key** instead of complete project name. Project keys are automatically assigned by JIRA or you can modify them when creating a project.
 
 You can also provide an interval which will be used to check whether there is a ticket/issue with same content already present in that timeslot. For example, an interval of 10 will check all tickets/issues created in last 10 minutes and if the tickets/issues to push from USM are already present, new tickets will not be created.
 ```
 "jira": {"interval": 100, ...}
 ```
->Duplicates of USM alarms in JIRA are checked using alarms uuid which are inserted into JIRA issues as invisible properties. USM can create multiple alarms for a bruteforce attempt from same source and hence JIRA can have a lot of tickets for each redundant alarm. To avoid that, program checks the hash of tickets content and if hash matches to any previous ticket, new tickets are not created.
+>Duplicates of USM alarms in JIRA are checked using alarms uuid which are inserted into JIRA issues as invisible properties. For example, USM can create multiple alarms for a bruteforce attempt from same source and hence JIRA can have a lot of tickets for each redundant alarm. To avoid that, program checks the hash of tickets content and if hash matches to any previous ticket, new tickets are not created.
 
 
 ## Slack Options

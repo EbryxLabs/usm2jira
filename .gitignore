@@ -1,5 +1,6 @@
 .vscode/
-.venv/
+.venv*/
+.forest/
 __pycache__/
 **.enc
 **_keys
