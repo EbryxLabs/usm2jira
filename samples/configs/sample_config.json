@@ -5,13 +5,26 @@
 		"client_secret": "<your-USM-client-secret>",
 		"interval": "<interval_in_minutes>",
 		"sensors": {
-			"uuid-1": "name-1",
-			"uuid-2": "name-2"
+			"uuid-1": {
+				"name": "name-1",
+				"assignee": "<jira-user-email or jira-display-name>",
+				"labels": ["L1", "L2"]
+			},
+			"uuid-2": {
+				"name": "name-2",
+				"assignee": "<jira-user-email or jira-display-name>",
+				"labels": ["L1", "L2"]
+			},
 		},
 		"templates": [
 			{
-				"triggers": ["<USM-alarm-title>", "<USM-alarm-subtitle>", "..."],
-				"filename": "./my-sample-template.json"
+				"triggers": {
+					"app_type": "something",
+					"rule_intent": "something",
+					"rule_strategy": "something",
+					"rule_name": "something*"
+				},
+				"filename": "./my-sample-template.json or public URL of template"
 			}
 		]
 	},
