@@ -384,7 +384,8 @@ def tickets_from_alarms(alarms, config):
             ticket['Assignee'] = selectedSensor.get('assignee', str())
             ticket['Labels'] = selectedSensor.get('labels', list())
 
-        ticket['Date'] = ticket['_timestamp'][2:10].replace('-', str())
+        year, month, day = ticket['_timestamp'][2:10].split('-')
+        ticket['Date'] = ''.join([day, month, year])
         ticket.update(alarm)
         tickets.append(ticket)
 
