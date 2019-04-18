@@ -342,6 +342,7 @@ def filter_alarms(alarms, issues, config):
                     is_triggered.append(True)
 
         if is_triggered and False not in is_triggered:
+            alarm['template'] = template
             filtered.append(alarm)
 
     if not filtered:
@@ -388,13 +389,7 @@ def tickets_from_alarms(alarms, config):
         tickets.append(ticket)
 
     for ticket in tickets:
-        ticket_template = dict()
-        for template in usm.get('templates'):
-            if ticket['rule_strategy'] in template.get('triggers') or \
-                    ticket['rule_method'] in template.get('triggers'):
-                ticket_template = template.copy()
-                break
-
+        ticket_template = ticket['template']
         if not ticket_template:
             continue
 
@@ -427,6 +422,7 @@ def tickets_from_alarms(alarms, config):
                 ticket_template['description'][idx] = desc
 
         ticket['template'] = ticket_template
+
     return tickets
 
 
@@ -533,6 +529,7 @@ def push_tickets(tickets, projects, issue_types, users, config):
             ticket_data = json.loads(ticket_data)
         except json.JSONDecodeError as exc:
             logger.info(exc)
+            responses.append(dict())
             continue
 
         res = requests.post(url, json=ticket_data, auth=(
