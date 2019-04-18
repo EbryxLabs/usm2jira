@@ -93,11 +93,12 @@ External template files can be placed locally or online. Make sure to specify th
     "*Risk:* High",
     "*Description:*\\n A sample description.",
     "*Actions & Remediation:*\\n \\n- Step.1 \\n- Step.2"
-  ]
+  ],
+  "labels": ["Label-1", "Label-2", ...]
 }
 ```
 
-Keywords starting with `$` sign are variables that are populated using the data from USM. **`title`** and **`description`** fields are used to layout JIRA tickets as you like. You can use [Wiki Rendering Format](https://jira.atlassian.com/secure/WikiRendererHelpAction.jspa?section=all) to add different kind of rich formatting in tickets description.
+Keywords starting with `$` sign are variables that are populated using the data from USM. **`title`**, **`description`** and **`labels`** fields are used to layout JIRA tickets as you like. You can use [Wiki Rendering Format](https://jira.atlassian.com/secure/WikiRendererHelpAction.jspa?section=all) to add different kind of rich formatting in tickets description. **Please note that **`labels`** in ticket templates will override the labels from **`sensors`** field of config.**
 
 > Remember that we use **`interval`** field to filter out alarms for last N minutes as well.
 

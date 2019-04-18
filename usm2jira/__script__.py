@@ -513,7 +513,9 @@ def push_tickets(tickets, projects, issue_types, users, config):
                 elif '@' not in target and user.get('displayName') == target:
                     data['fields']['assignee'] = {'name': user['name']}
 
-        if ticket.get('Labels'):
+        if ticket['template'].get('labels'):
+            data['fields']['labels'] = ticket['template']['labels']
+        elif ticket.get('Labels'):
             data['fields']['labels'] = ticket['Labels']
 
         url = urljoin(jira.get('api_url'), 'issue')
