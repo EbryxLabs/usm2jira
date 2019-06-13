@@ -7,3 +7,4 @@ __pycache__/
 **.zip
 **client**
 **lambda_code**
+*.json
